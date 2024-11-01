@@ -6,6 +6,8 @@ import axios from "axios"
 const AUPHONIC_API_URL = "https://auphonic.com/api/simple/productions.json"
 const API_USERNAME = ""
 const API_PASSWORD = ""
+const WEBHOOK_URL = "https://socket-server-lcbd.onrender.com/auphonic-enhance-audio"
+const SERVER_URL = "https://socket-server-lcbd.onrender.com"
 
 const AuphonicEnhanceAudio = () => {
   const [isProcessing, setIsProcessing] = useState(false)
@@ -19,7 +21,7 @@ const AuphonicEnhanceAudio = () => {
 
   // Memoize the socket connection
   const socket = useMemo(() => {
-    const newSocket = io("https://socket-server-lcbd.onrender.com", {
+    const newSocket = io(SERVER_URL, {
       transports: ["websocket"],
       reconnection: true,
       reconnectionAttempts: 5,
@@ -81,7 +83,7 @@ const AuphonicEnhanceAudio = () => {
     formData.append("title", title)
     formData.append("input_file", audioFile)
     formData.append("action", "start")
-    formData.append("webhook", "https://socket-server-lcbd.onrender.com/auphonic-enhance-audio") // Replace with our actual server url
+    formData.append("webhook", WEBHOOK_URL)
     formData.append("publisher", socketId)
 
     try {
