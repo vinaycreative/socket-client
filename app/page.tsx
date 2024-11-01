@@ -1,101 +1,176 @@
-import Image from "next/image";
+"use client"
+import React, { useEffect, useMemo, useState } from "react"
+import { io } from "socket.io-client"
+import axios from "axios"
 
-export default function Home() {
+const AUPHONIC_API_URL = "https://auphonic.com/api/simple/productions.json"
+const API_USERNAME = ""
+const API_PASSWORD = ""
+
+const AuphonicEnhanceAudio = () => {
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [audioFile, setAudioFile] = useState<File | null>(null)
+  const [title, setTitle] = useState("test-track")
+  const [enhancedAudioUrl, setEnhancedAudioUrl] = useState("")
+  const [socketId, setSocketId] = useState<string>("")
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [enhanceProgress, setEnhanceProgress] = useState(0)
+  const [isEnhancing, setIsEnhancing] = useState(false)
+
+  // Memoize the socket connection
+  const socket = useMemo(() => {
+    const newSocket = io("https://socket-server-lcbd.onrender.com", {
+      transports: ["websocket"],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    })
+
+    return newSocket
+  }, [])
+
+  useEffect(() => {
+    // Establish socket connection when the component is mounted
+    socket.on("connect", () => {
+      console.log("Connected to Socket.io with ID:", socket.id)
+      // @ts-ignore
+      setSocketId(socket.id)
+    })
+
+    socket.on("connect_error", (err) => {
+      console.error("Socket connection error:", err)
+    })
+
+    socket.on("reconnect", () => {
+      console.log("Reconnected to Socket.io")
+    })
+
+    socket.on("reconnect_attempt", (attempt) => {
+      console.log("Reconnect attempt:", attempt)
+    })
+
+    socket.on("enhanceAudioComplete", (payload) => {
+      console.log("Enhancement complete, payload received:", payload)
+      const audioBlob = new Blob([payload.audioFile], { type: "audio/mp3" })
+      const audioUrl = URL.createObjectURL(audioBlob)
+      // Use the audio URL to play or download the enhanced audio
+      setEnhancedAudioUrl(audioUrl)
+      setIsProcessing(false)
+      setEnhanceProgress(100)
+      setIsProcessing(false)
+    })
+
+    return () => {
+      socket.disconnect()
+    }
+  }, [socket])
+
+  // Function to trigger audio enhancement process via Auphonic API
+  const handleAudioEnhancement = async () => {
+    if (!audioFile || !title || !socketId) {
+      console.log("Audio file, title, or socket ID is missing.")
+      return
+    }
+    setIsProcessing(true)
+    setIsEnhancing(false)
+    setUploadProgress(0)
+
+    // Build form data to send to Auphonic
+    const formData = new FormData()
+    formData.append("preset", "ZAoTrRzrkYUQMwAAqjm6JR")
+    formData.append("title", title)
+    formData.append("input_file", audioFile)
+    formData.append("action", "start")
+    formData.append("webhook", "https://socket-server-lcbd.onrender.com/auphonic-enhance-audio") // Replace with our actual server url
+    formData.append("publisher", socketId)
+
+    try {
+      const response = await axios.post(AUPHONIC_API_URL, formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+        auth: {
+          username: API_USERNAME,
+          password: API_PASSWORD,
+        },
+        onUploadProgress: (progressEvent) => {
+          // @ts-ignore
+          const progress = Math.round((progressEvent.loaded / progressEvent.total) * 100)
+          console.log("Upload progress:", progress + "%")
+          setUploadProgress(progress)
+        },
+      })
+
+      console.log("Production created successfully:", response.data)
+      setIsEnhancing(true) // Start enhancement progress simulation after upload finishes
+    } catch (error) {
+      console.error("Production creation failed:", error)
+      setIsProcessing(false)
+    }
+  }
+
+  // Simulate enhancement progress based on file size
+  useEffect(() => {
+    let interval: NodeJS.Timeout
+    if (isEnhancing && enhanceProgress < 100) {
+      const fileSizeMB = (audioFile?.size || 0) / (1024 * 1024)
+      let estimatedTime = 60000
+      if (fileSizeMB < 5) estimatedTime = 40000
+      else if (fileSizeMB >= 5 && fileSizeMB <= 20) estimatedTime = 90000
+      else estimatedTime = 120000
+      const incrementTime = estimatedTime / 100
+      interval = setInterval(() => {
+        setEnhanceProgress((prevProgress) => Math.min(prevProgress + 1, 99))
+      }, incrementTime)
+    }
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  }, [isEnhancing, enhanceProgress, audioFile])
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
+    <div className="p-10">
+      <h1 className="text-2xl text-gray-800 font-semibold mb-2">Auphonic Audio Enhancement</h1>
+      <div className="flex flex-col gap-3 mb-3">
+        <input
+          type="file"
+          accept="audio/*"
+          onChange={(e) => setAudioFile(e.target.files ? e.target.files[0] : null)}
         />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+        <button
+          onClick={handleAudioEnhancement}
+          disabled={isProcessing}
+          className="bg-violet-600 mr-auto px-4 py-2 text-white rounded-md"
+        >
+          {isProcessing ? "Processing..." : "Enhance Audio"}
+        </button>
+      </div>
+      {isProcessing && (
+        <div>
+          <h2>{uploadProgress < 100 ? "Uploading..." : "Enhancing..."}</h2>
+          <progress value={uploadProgress < 100 ? uploadProgress : enhanceProgress} max="100" />
+          <p>
+            {uploadProgress < 100
+              ? `Upload Progress: ${uploadProgress}%`
+              : `Enhancement Progress: ${enhanceProgress}%`}
+          </p>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      )}
+
+      {enhancedAudioUrl && audioFile && (
+        <div className="flex flex-col gap-3">
+          <div className="px-4 py-2 bg-green-100 rounded-md mr-auto border border-green-300">
+            <h2 className="mb-2 text-green-600">Enhanced Audio:</h2>
+            <audio controls src={enhancedAudioUrl}></audio>
+          </div>
+          <div className="px-4 py-2 bg-pink-100 rounded-md mr-auto border border-pink-300">
+            <h2 className="mb-2 text-pink-600">Unhanced Audio:</h2>
+            <audio controls src={URL.createObjectURL(audioFile)}></audio>
+          </div>
+        </div>
+      )}
     </div>
-  );
+  )
 }
+
+export default AuphonicEnhanceAudio
